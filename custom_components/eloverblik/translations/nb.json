@@ -4,7 +4,8 @@
             "user": {
                 "data": {
                     "refresh_token": "Oppdater Token",
-                    "metering_point": "Målepunkt"
+                    "metering_point": "Målepunkt",
+                    "use_statistics": "Importer statistikk"
                 },
                 "title": "Angi oppdateringstoken og målepunkt"
             }

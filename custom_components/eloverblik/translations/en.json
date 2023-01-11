@@ -4,7 +4,8 @@
             "user": {
                 "data": {
                     "refresh_token": "Refresh Token",
-                    "metering_point": "Metering Point"
+                    "metering_point": "Metering Point",
+                    "use_statistics": "Import statistics"
                 },
                 "title": "Enter refresh token and metering point"
             }
