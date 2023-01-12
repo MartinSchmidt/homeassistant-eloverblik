@@ -1,25 +1,20 @@
 """Platform for Eloverblik sensor integration."""
 import datetime
-import logging
-from homeassistant.const import ENERGY_KILO_WATT_HOUR
+from homeassistant.const import UnitOfEnergy
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import Entity
-from pyeloverblik.eloverblik import Eloverblik
-from pyeloverblik.models import TimeSeries
-
-_LOGGER = logging.getLogger(__name__)
 from .const import DOMAIN, CURRENCY_KRONER_PER_KILO_WATT_HOUR
 
-
-
-async def async_setup_entry(hass, config, async_add_entities):
+async def async_setup_entry(hass: HomeAssistant, config: ConfigEntry, async_add_entities):
     """Set up the sensor platform."""
     eloverblik = hass.data[DOMAIN][config.entry_id]
 
     sensors = []
     sensors.append(EloverblikEnergy("Eloverblik Energy Total", 'total', eloverblik))
     sensors.append(EloverblikEnergy("Eloverblik Energy Total (Year)", 'year_total', eloverblik))
-    for x in range(1, 25):
-        sensors.append(EloverblikEnergy(f"Eloverblik Energy {x-1}-{x}", 'hour', eloverblik, x))
+    for hour in range(1, 25):
+        sensors.append(EloverblikEnergy(f"Eloverblik Energy {hour-1}-{hour}", 'hour', eloverblik, hour))
     sensors.append(EloverblikTariff("Eloverblik Tariff Sum", eloverblik))
     async_add_entities(sensors)
 
@@ -66,19 +61,19 @@ class EloverblikEnergy(Entity):
         attributes = dict()
         attributes['Metering date'] = self._data_date
         attributes['metering_date'] = self._data_date
-        
+
         return attributes
 
     @property
     def unit_of_measurement(self):
         """Return the unit of measurement."""
-        return ENERGY_KILO_WATT_HOUR
+        return UnitOfEnergy.KILO_WATT_HOUR
 
     def update(self):
         """Fetch new state data for the sensor.
         This is the only method that should fetch new data for Home Assistant.
         """
-        self._data.update_energy()        
+        self._data.update_energy()
 
         self._data_date = self._data.get_data_date()
 
@@ -124,7 +119,7 @@ class EloverblikTariff(Entity):
         attributes = {
             "hourly": [self._data_hourly_tariff_sums[i] for i in range(24)]
         }
-        
+
         return attributes
 
     @property
@@ -136,7 +131,7 @@ class EloverblikTariff(Entity):
         """Fetch new state data for the sensor.
         This is the only method that should fetch new data for Home Assistant.
         """
-        self._data.update_tariffs()        
+        self._data.update_tariffs()
 
         self._data_hourly_tariff_sums = [self._data.get_tariff_sum_hour(h) for h in range(1, 25)]
         self._state = self._data_hourly_tariff_sums[datetime.datetime.now().hour]

@@ -2,22 +2,20 @@
 import asyncio
 import logging
 import sys
-
+import json
+from datetime import timedelta, datetime
+import requests
 import voluptuous as vol
 from homeassistant.util import Throttle
-from datetime import timedelta, date
-
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-
+from pyeloverblik.models import TimeSeries
 from pyeloverblik.eloverblik import Eloverblik
-
 from .const import DOMAIN
+from .statistics import EloverblikStatistic
 
-import requests
 
 _LOGGER = logging.getLogger(__name__)
-
 
 CONFIG_SCHEMA = vol.Schema({DOMAIN: vol.Schema({})}, extra=vol.ALLOW_EXTRA)
 
@@ -37,7 +35,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     refresh_token = entry.data['refresh_token']
     metering_point = entry.data['metering_point']
     
-    hass.data[DOMAIN][entry.entry_id] = HassEloverblik(refresh_token, metering_point)
+    hass_eloverblik = HassEloverblik(hass, refresh_token, metering_point)
+    hass_eloverblik._statistic = EloverblikStatistic(hass, hass_eloverblik)
+    hass.data[DOMAIN][entry.entry_id] = hass_eloverblik
 
     for component in PLATFORMS:
         hass.async_create_task(
@@ -58,18 +58,22 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
         )
     )
     if unload_ok:
-        hass.data[DOMAIN].pop(entry.entry_id)
+        hass_eloverblik = hass.data[DOMAIN].pop(entry.entry_id)
+        await hass_eloverblik._statistic.async_unload()
 
     return unload_ok
 
 class HassEloverblik:
-    def __init__(self, refresh_token, metering_point):
+    def __init__(self, hass: HomeAssistant, refresh_token, metering_point):
+        self._hass = hass
         self._client = Eloverblik(refresh_token)
         self._metering_point = metering_point
 
         self._day_data = None
         self._year_data = None
         self._tariff_data = None
+
+        hass.async_run_hass_job
 
     def get_total_day(self):
         if self._day_data != None:
@@ -93,6 +97,31 @@ class HassEloverblik:
                 return 0
         else:
             return None
+
+    @Throttle(MIN_TIME_BETWEEN_UPDATES)
+    def get_hourly_data(self, from_date: datetime, to_date: datetime) -> dict[datetime, TimeSeries]:
+        """Used to get hourly data for a meter between two dates."""
+
+        try:
+            raw_data = self._client.get_time_series(self._metering_point, from_date, to_date)
+            if raw_data.status == 200:
+                json_response = json.loads(raw_data.body)
+                parsed = self._client._parse_result(json_response)
+                return parsed
+            else:
+                _LOGGER.warn(f"Error from eloverblik while getting historic data: {raw_data.status} - {raw_data.body}")
+        except requests.exceptions.HTTPError as he:
+            message = None
+            if he.response.status_code == 401:
+                message = f"Unauthorized error while accessing eloverblik.dk. Wrong or expired refresh token?"
+            else:
+                e = sys.exc_info()[1]
+                message = f"Exception: {e}"
+
+            _LOGGER.warn(message)
+        except: 
+            e = sys.exc_info()[1]
+            _LOGGER.warn(f"Exception: {e}")
 
     def get_data_date(self):
         if self._day_data != None:
